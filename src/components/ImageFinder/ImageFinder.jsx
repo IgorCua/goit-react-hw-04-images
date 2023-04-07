@@ -1,72 +1,42 @@
 import axios from "axios";
-import { PureComponent } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Searchbar } from "./searchbar/Searchbar.jsx";
 import { ImageGallery } from "./imageGallery/ImageGallery";
 import { ImageGalleryItem } from "./imageGalleryItem/ImageGalleryItem.jsx";
 import { Button } from "./button/Button.jsx";
+// import { loadImg } from "./helpers/helpers.js";
 // import { Audio } from  'react-loader-spinner';
 
-export class ImageFinder extends PureComponent{
-    state = {
-        API_KEY: "34265158-b3e7c04db650eceaa44e6318e",
-        page: 0,
-        pageLimit: 12,
-        requestedImgArr: [],
-        input: '',
-        total: 0
+export const ImageFinder = () => {
+    const API_KEY = "34265158-b3e7c04db650eceaa44e6318e";
+    const PAGE_LIMIT = 12;
+    const [page, setPage] = useState(1);
+    // const [pageLimit, setPagelimit] = useState(4);
+    const [requestedArr, setRequestedArr] = useState([]);
+    const [input, setInput] = useState('');
+    const [total, setTotal] = useState(0);
+    const reqArrPrevState = usePrevState(requestedArr);
+    const inputPrevState = usePrevState(input);
+    // const pagePrevState = usePrevState(page);
+    const snapshot = usePrevState(document.body.clientHeight)
+
+    function usePrevState(val){
+        const ref = useRef();
+
+        useEffect(() => {
+            ref.current = val;
+        }, [val]);
+
+        return ref.current !== undefined ? ref.current : val;
     }
 
-    async componentDidMount(){
-        // const imgArr = await this.loadImg();
-        // console.log(imgArr);
-        // console.log("didMount");
-        // this.setState({requestedImgArr: imgArr});
-    }
-
-    getSnapshotBeforeUpdate(prevProps, prevState) {
-        return document.body.clientHeight;
-    }
-
-    async componentDidUpdate(prevProps, prevState, snapshot){
-        if(prevState.requestedImgArr !== this.state.requestedImgArr){
-            window.scrollTo({
-                top: snapshot,
-                behavior: "smooth"
-            })
-        }
-        if (prevState.input !== this.state.input) {
-            // console.log("didUpdate")
-
-            this.loadImg(1).then(req => {
-                // console.log('req',req)
-                this.setState({page: 1, requestedImgArr: req})
-            })
-        }
-    }
-    
-    loadMore = async () => {
-        await this.setState(prevState => {
-            return {page: prevState.page + 1}
-        })
-        // console.log("loadMore2", this.state)
-
-        this.loadImg().then(req => {
-            this.setState({requestedImgArr: [...this.state.requestedImgArr, ...req]})
-        })
-    }
-    
-    async loadImg(num){
-        const {input, API_KEY, page, pageLimit} = this.state;
+    const loadImg = useCallback( async (num) => {
         const inputVal = input !== '' && `q=${input}`
         let filteredReq;
-
         try{
             const request = await axios.get(`
-                https://pixabay.com/api/?key=${API_KEY}&page=${num === 1 ? num : page}&per_page=${pageLimit}
-                &${inputVal}
+                https://pixabay.com/api/?key=${API_KEY}&page=${num === 1 ? num : page + 1}&per_page=${PAGE_LIMIT}&${inputVal}
             `);
-            // console.log("request", request.data.total)
-            // console.log(this.state.requestedImgArr.length)
             
             filteredReq = request.data.hits.map(e => {
                 return {
@@ -77,36 +47,56 @@ export class ImageFinder extends PureComponent{
                 }
             });
 
-            this.setState({total: request.data.total});
+            setTotal(request.data.total);
 
         } catch (error) {
             console.log(error);
         }
         return filteredReq;
+    }, [page, input])
+
+    useEffect(()=>{
+        if(reqArrPrevState !== requestedArr){
+            window.scrollTo({
+                top: snapshot,
+                behavior: "smooth"
+            });
+        }
+        if (inputPrevState !== input) {
+            setPage(1);
+
+            loadImg(1).then(req => {
+                setRequestedArr(req);
+            });
+        }
+    }, [input, inputPrevState, reqArrPrevState, requestedArr, snapshot, loadImg])
+    
+    const loadMore = async () => {
+        await setPage(page + 1);
+
+        loadImg().then(req => {
+            setRequestedArr([...requestedArr, ...req])
+        })
     }
 
-    formHandler = (evt) => {
+    const formHandler = (evt) => {
         evt.preventDefault();
-        // console.log(evt.target[1].value);
 
-        this.setState({input: evt.target[1].value})
+        setInput(evt.target[1].value)
     }
 
-    render(){
-        // console.log("render", this.state)
-        // console.log(this.state.requestedImgArr)
-        return (
-            <>
-                <Searchbar input={this.state.input} formHandler={this.formHandler}></Searchbar>
-                <ImageGallery>
-                    <ImageGalleryItem requestedImgArr={this.state.requestedImgArr}/>
-                </ImageGallery>
-                <Button 
-                    loadMore={this.loadMore}
-                    total = {this.state.total}
-                    reqImgArrLength={this.state.requestedImgArr.length} 
-                />
-            </>
-        )
-    }
+    
+    return (
+        <>
+            <Searchbar input={input} formHandler={formHandler}></Searchbar>
+            <ImageGallery>
+                <ImageGalleryItem requestedImgArr={requestedArr}/>
+            </ImageGallery>
+            <Button 
+                loadMore={loadMore}
+                total = {total}
+                reqImgArrLength={requestedArr.length} 
+            />
+        </>
+    )
 }
